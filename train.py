@@ -9,11 +9,19 @@ from torch.utils.data import Dataset, DataLoader
 from model_utils import *
 from dataset_utils import *
 from loss_utils import *
-
-
+from evaluate import test
+EPOCH = 100
+lr = 0.001
 
 if __name__ == '__main__':
 
+    file = 'data/processed_data.npz'
+    x_train, x_test, y_train, y_test = load_data(file)
+    train_loader = DataLoader(TrainSet(x_train, y_train), batch_size=64, shuffle=True)
+    test_loader = DataLoader(TestSet(x_test, y_test), batch_size=64, shuffle=True)
+    
+    model = SNN(10).cuda()
+    
     label_num = 0
     total = 0
     sum = 0
@@ -32,6 +40,7 @@ if __name__ == '__main__':
     #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=5, eta_min=1e-5)
     # lambda1 = lambda epoch: 0.5 ** (epoch // 10)
     # scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda1)
+    train_loss = [] 
     for epoch in range(EPOCH):
         pbar = tqdm(train_loader, desc=f'Train Epoch {epoch}/{EPOCH}')
         model.train()
@@ -65,7 +74,51 @@ if __name__ == '__main__':
                             correct/total*100) '''
                 scheduler.step()
                 functional.reset_net(model)
-        test(criterion, epoch, optimizer)
+        #test(criterion, epoch, optimizer)
+            test_loss = []
+            global best_acc
+            threshold = 0.5
+            correct = torch.zeros(1).squeeze().cuda()
+            total = torch.zeros(1).squeeze().cuda()
+            pbar = tqdm(test_loader, desc=f'Test Epoch{epoch}/{EPOCH}')
+            model.eval()
+            with torch.no_grad():
+                with pbar as t:
+                    for data, label in t:
+                        batch_size = label.shape[0]
+                        data = data.reshape([-1,1,52,52]).float().cuda()
+                        label = label.float().cuda()
+                        output = model(data)
 
+                        #output = output.cpu()
+                        #output = torch.sigmoid(output)
+                        if not torch.isnan(output).any():
+                            loss = criterion(output, label).item()
+                            test_loss.append(loss)
+
+                            pred = torch.where(output > threshold, torch.ones_like(output), torch.zeros_like(output))
+                            # correct += (pred == label).sum()
+                            total += label.shape[0]
+                            i = 0
+                            while i < label.shape[0]:
+                                if all(label[i] == pred[i]):
+                                    correct += 1
+
+                                # if f'{pred[i].cpu().numpy().astype(int).tolist()}' in dictx:
+                                #     array[dictx[f'{label[i].cpu().numpy().astype(int).tolist()}']][
+                                #         dictx[f'{pred[i].cpu().numpy().astype(int).tolist()}']] += 1
+                                # else:
+                                #     array[dictx[f'{label[i].cpu().numpy().astype(int).tolist()}']][38] += 1
+                                # i += 1
+
+                        pbar.set_description(
+                            f'Test  Epoch: {epoch}/{EPOCH} ')
+                        functional.reset_net(model)
+                    pred_acc = correct / total
+                    print("Test Accuracy of the epoch: ", pred_acc*100)
+                    print(f"\nTest Loss:{round(np.mean(test_loss), 4)}")
+            if pred_acc > best_acc:
+                best_acc = pred_acc
+                save_model(epoch, optimizer, test_loss, pred_acc)
 '''    np.save('train_loss_cnn.npy', train_loss)
     np.save('test_loss_cnn.npy', test_loss)'''

@@ -22,7 +22,7 @@ def load_data(file):
     trainx = add_noise(trainx, 4)
     trainy = data['arr_1']  # (38015, 8), 0-1999: C24, 34866-35014: C9, 33000-33865: C7
     x_train, x_test, y_train, y_test = train_test_split(trainx, trainy, test_size=0.2, random_state=10)
-    return 
+    return x_train, x_test, y_train, y_test 
 
 class TrainSet(Dataset):
     def __init__(self, x_train, y_train):
